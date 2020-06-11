@@ -362,7 +362,6 @@ if multijunction == 1:
                 maxEfficiencyMJ.append(np.nan)
 
         if am1pt5 == 1:
-            print(len(index1Real))
             if len(index1Real) > 0:
                 for b in range(len(index1Real)):
                     j1tempReal = j1Real[i,index1Real[b],index2Real[b]]
