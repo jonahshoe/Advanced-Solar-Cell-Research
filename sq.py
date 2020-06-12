@@ -211,7 +211,7 @@ if multijunction == 1:
         eg2 = 1.1
         P_in = 930/q #page 8 of Goodnick's document, for AM1.5, intensity is approximately 930 W/m^2
 
-    vcount = 300 #resolution of voltage arrays
+    vcount = 500 #resolution of voltage arrays
 
     if blackbody == 1:
         j1 = np.zeros([egcount,vcount,vcount])
@@ -282,62 +282,64 @@ if multijunction == 1:
         if np.isnan(term2_1) == True:
             term2_1 = 0
 
-        for j in range(vcount):
-            term3_1 = Q_V(eg1[i],Tc,v1[j])
-            if np.isnan(term3_1) == True:
-                term3_1 = 0
-            term4_2 = Q_V(eg1[i],Tc,v1[j])
-            if np.isnan(term4_2) == True:
-                term4_2 = 0
+        threshold = 0.05
+        while(len(index1Real) == 0):
+            print("trying again")
+            for j in range(vcount):
+                term3_1 = Q_V(eg1[i],Tc,v1[j])
+                if np.isnan(term3_1) == True:
+                    term3_1 = 0
+                term4_2 = Q_V(eg1[i],Tc,v1[j])
+                if np.isnan(term4_2) == True:
+                    term4_2 = 0
 
-            for n in range(vcount):
+                for n in range(vcount):
 
-                term4_1 = Q_V(eg1[i],Tc,v2[n])
-                if np.isnan(term4_1) == True:
-                    term4_1 = 0
+                    term4_1 = Q_V(eg1[i],Tc,v2[n])
+                    if np.isnan(term4_1) == True:
+                        term4_1 = 0
 
-                term3_2 = Q_V(eg2,Tc,v2[n])
-                if np.isnan(term3_2) == True:
-                    term3_2 = 0
+                    term3_2 = Q_V(eg2,Tc,v2[n])
+                    if np.isnan(term3_2) == True:
+                        term3_2 = 0
 
-                ##### This calculates both layers' current densities, then takes their
-                ##### difference and their average. Any pair of current densities
-                ##### that satisfies the requirement that their difference divided
-                ##### by their average is less than the parameter "threshold" is
-                ##### accepted, and their indices are stored in index1 and index2.
+                    ##### This calculates both layers' current densities, then takes their
+                    ##### difference and their average. Any pair of current densities
+                    ##### that satisfies the requirement that their difference divided
+                    ##### by their average is less than the parameter "threshold" is
+                    ##### accepted, and their indices are stored in index1 and index2.
 
-                threshold = 0.6
+                    if blackbody == 1:
+                        j1[i,j,n] = qg*(term1_1+term2_1-term3_1+term4_1)
+                        if j1[i,j,n] < 0:
+                            j1[i,j,n] = 0
+                        j2[i,j,n] = qg*(term1_2+term2_2-term3_2+term4_2)
+                        if j2[i,j,n] < 0:
+                            j2[i,j,n] = 0
+                        diff[n] = np.abs(j1[i,j,n]-j2[i,j,n])
+                        javg = (j1[i,j,n]+j2[i,j,n])/2
+                        if javg != 0 and np.isnan(diff[n]) == False:
+                            if diff[n]/javg < threshold:
+                                index1.append(j)
+                                index2.append(n)
+                                storedDiffs.append(diff[n]/(np.abs(j1[i,j,n]+j2[i,j,n])/2))
 
-                if blackbody == 1:
-                    j1[i,j,n] = qg*(term1_1+term2_1-term3_1+term4_1)
-                    if j1[i,j,n] < 0:
-                        j1[i,j,n] = 0
-                    j2[i,j,n] = qg*(term1_2+term2_2-term3_2+term4_2)
-                    if j2[i,j,n] < 0:
-                        j2[i,j,n] = 0
-                    diff[n] = np.abs(j1[i,j,n]-j2[i,j,n])
-                    javg = (j1[i,j,n]+j2[i,j,n])/2
-                    if javg != 0 and np.isnan(diff[n]) == False:
-                        if diff[n]/javg < threshold:
-                            index1.append(j)
-                            index2.append(n)
-                            storedDiffs.append(diff[n]/(np.abs(j1[i,j,n]+j2[i,j,n])/2))
-
-                if am1pt5 == 1:
-                    j1Real[i,j,n] = q*term1_1Real+qg*(term2_1-term3_1+term4_1)
-                    if j1Real[i,j,n] < 0:
-                        j1Real[i,j,n] = 0
-                    j2Real[i,j,n] = q*term1_2Real+qg*(term2_2-term3_2+term4_2)
-                    if j2Real[i,j,n] < 0:
-                        j2Real[i,j,n] = 0
-                    diffReal[j,n] = np.abs(j1Real[i,j,n] - j2Real[i,j,n])
-                    javgReal = (j1Real[i,j,n]+j2Real[i,j,n])/2
-                    if javgReal != 0 and np.isnan(diffReal[j,n]) == False:
-                        if diffReal[j,n]/javgReal < threshold:
-                            index1Real.append(j)
-                            index2Real.append(n)
-                            storedDiffsReal.append(diffReal[j,n]/(np.abs(j1Real[i,j,n]+j2Real[i,j,n])/2))
-
+                    if am1pt5 == 1:
+                        j1Real[i,j,n] = q*term1_1Real+qg*(term2_1-term3_1+term4_1)
+                        if j1Real[i,j,n] < 0:
+                            j1Real[i,j,n] = 0
+                        j2Real[i,j,n] = q*term1_2Real+qg*(term2_2-term3_2+term4_2)
+                        if j2Real[i,j,n] < 0:
+                            j2Real[i,j,n] = 0
+                        diffReal[j,n] = np.abs(j1Real[i,j,n] - j2Real[i,j,n])
+                        javgReal = (j1Real[i,j,n]+j2Real[i,j,n])/2
+                        if javgReal != 0 and np.isnan(diffReal[j,n]) == False:
+                            if diffReal[j,n]/javgReal < threshold:
+                                index1Real.append(j)
+                                index2Real.append(n)
+                                storedDiffsReal.append(diffReal[j,n]/(np.abs(j1Real[i,j,n]+j2Real[i,j,n])/2))
+            threshold += 0.05
+        print("success!")
         ##### This next part calculates the efficiency for each of the pairs of
         ##### current densities that passes the prior threshold criteria. The
         ##### average of the current densities and sum of the voltages are used
@@ -362,6 +364,7 @@ if multijunction == 1:
                 maxEfficiencyMJ.append(np.nan)
 
         if am1pt5 == 1:
+            print(str(len(index1Real)) + " pairs found for " + str(eg1[i]) + " eV with threshold = " + str(threshold-0.05))
             if len(index1Real) > 0:
                 for b in range(len(index1Real)):
                     j1tempReal = j1Real[i,index1Real[b],index2Real[b]]
