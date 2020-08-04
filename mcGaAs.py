@@ -1168,7 +1168,7 @@ for stepNum in range(time_step_count):
     print(velocityAveragesL_tran[stepNum])
     print(velocityAveragesX_long[stepNum])
     print(velocityAveragesX_tran[stepNum])
-
+#testing git
 plt.figure(1)
 plt.plot(times*1e12,velocityAveragesGamma/1e5,'o',label='Gamma')
 plt.plot(times*1e12,velocityAveragesL_long/1e5,'o',label='L long')
