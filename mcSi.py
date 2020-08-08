@@ -57,7 +57,8 @@ if silicon == 1:
     optical_deformation_potential = 2.2e10*e
     occupancy_SiOpticalLong = phononOccupancy(hbar_j*optical_long_freq)
     phonon_occupancy = occupancy_SiOpticalLong.copy()
-    mass_longitudinal = 0.916*m_e
+    # mass_longitudinal = 0.916*m_e
+    mass_longitudinal = 0.98*m_e
     mass_transverse = 0.19*m_e
     mass_average = (mass_transverse**2*mass_longitudinal)**(1/3)
     Dg_TA = 5e9*e
