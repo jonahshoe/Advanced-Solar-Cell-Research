@@ -7,6 +7,7 @@ acoustic_deformation_potential_scattering = 1
 optical_deformation_potential_scattering = 1
 intervalley_deformation_potential_scattering = 1
 polar_optical_scattering = 1
+plasmon_scattering = 1
 plot_stuff = 0
 
 e = 1.602e-19 #charge of electron in eV
@@ -74,9 +75,9 @@ mass_X_effective = 0.58*m_e
 # intervalley_deformation_potential_LX = 72e9*e
 intervalley_deformation_potential_gammaL = 100e9*e #in J per meter
 intervalley_deformation_potential_gammaX = 100e9*e #in J per meter
-intervalley_deformation_potential_LX = 50e9*e
-intervalley_deformation_potential_LL = 70e9*e #in J per meter
-intervalley_deformation_potential_XX = 70e9*e
+intervalley_deformation_potential_LX = 100e9*e
+intervalley_deformation_potential_LL = 50e9*e #in J per meter
+intervalley_deformation_potential_XX = 50e9*e
 intervalley_phonon_energy_gammaL = 0.0278*e #in J
 intervalley_phonon_energy_gammaX = 0.0299*e #in J
 intervalley_phonon_energy_LL = 0.029*e
@@ -87,7 +88,7 @@ energy_separation_gammaX = 0.48*e
 energy_separation_LX = energy_separation_gammaX - energy_separation_gammaL
 ### some of these constants were obtained from http://www.ioffe.ru/SVA/NSM/Semicond/GaAs/bandstr.html ###
 ### some were obtained from Sze's textbook ###
-
+plasmon_frequency = e*np.sqrt(n_i/(eps*epsilon_0*mass))
 
 ##### Impact ionization rate calculation here #####
 
@@ -97,9 +98,12 @@ def IonizedImpurityScatteringRate(energy,alpha,mass):
     gamma_squared = 8*mass*energy*screeninglength_meters**2/hbar_j**2
     return C*gamma_squared**2/(1+gamma_squared)*energy**(-1.5)
 
-def AcousticDeformationElasticScatteringRate(energy,acoustic_deformation_potential,mass):
+def AcousticDeformationElasticScatteringRate(energy,acoustic_deformation_potential,alpha,mass):
     # return np.sqrt(2*mass**3)*(acoustic_deformation_potential)**2*k_B*Temp/(np.pi*hbar_j**4*c_l)*np.sqrt(energy)
     return np.pi*acoustic_deformation_potential**2*k_B*Temp/(hbar_j*c_l)*DensityOfStates(energy,mass)
+    # F = ((1+alpha*energy/e)**2+(1/3)*(alpha*energy/e)**2)/(1+2*alpha*energy)**2
+    # gamma = energy*(1+alpha*energy/e)
+    # return (2*mass)**(1.5)*k_B*Temp*acoustic_deformation_potential**2/(2*np.pi*density*c_l**2*hbar_j**4)*np.sqrt(gamma)*(1+2*alpha*energy/e)*F
 
 def OpticalDeformationAbsorptionScatteringRate(energy,mass):
     # return np.pi*(optical_deformation_potential)**2/(2*density*optical_long_freq)*phononOccupancy(optical_long_freq*hbar_j)*DensityOfStates(energy+optical_long_freq*hbar_j,mass)
@@ -145,6 +149,26 @@ def PolarOpticalEmissionScatteringRate(energy,mass):
     B[energy > optical_energy] = (N_0+1)*np.arcsinh(np.sqrt(energy[energy > optical_energy]/optical_energy-1))
     return A*B
 
+def PlasmonAbsorptionScatteringRate(energy,alpha,mass):
+    C = e**2*plasmon_frequency*phononOccupancy(hbar_j*plasmon_frequency)/(4*np.pi*eps*epsilon_0*hbar_j*np.sqrt(2*energy/mass))
+    k = np.sqrt(2*mass*energy*(1+alpha*energy/e))/hbar_j
+    output = C*np.log(hbar_j/(screeninglength_meters*np.sqrt(2*mass*energy)*(-1+np.sqrt(1+hbar_j*plasmon_frequency/energy))))
+    output[output < 0] = 0
+    return output
+
+def PlasmonEmissionScatteringRate(energy,alpha,mass):
+    C = e**2*plasmon_frequency*(phononOccupancy(hbar_j*plasmon_frequency)+1)/(4*np.pi*eps*epsilon_0*hbar_j*np.sqrt(2*energy/mass))
+    k = np.sqrt(2*mass*energy*(1+alpha*energy/e))/hbar_j
+    output = np.zeros_like(energy)
+    output[energy > hbar_j*plasmon_frequency] = C[energy > hbar_j*plasmon_frequency]*np.log(hbar_j/(screeninglength_meters*np.sqrt(2*mass*energy[energy > hbar_j*plasmon_frequency])*(1-np.sqrt(1-hbar_j*plasmon_frequency/energy[energy > hbar_j*plasmon_frequency]))))
+    output[output < 0] = 0
+    return output
+
+def CarrierCarrierScattering(energy,alpha,mass):
+    k_0 = np.sqrt(2*mass*energy*(1+alpha*energy/e))/hbar_j
+    dist = plt.hist()
+
+
 
 scatIndex = 1
 
@@ -174,9 +198,9 @@ if ionized_impurity_scattering == 1:
     scatIndex += 1
 
 if acoustic_deformation_potential_scattering == 1:
-    acoustic_rates_gamma = AcousticDeformationElasticScatteringRate(energies,acoustic_deformation_potential_gamma,mass_gamma) #double it to take absorption + emission into account
-    acoustic_rates_L = AcousticDeformationElasticScatteringRate(energies,acoustic_deformation_potential_L,mass_L_effective)
-    acoustic_rates_X = AcousticDeformationElasticScatteringRate(energies,acoustic_deformation_potential_X,mass_X_effective)
+    acoustic_rates_gamma = AcousticDeformationElasticScatteringRate(energies,acoustic_deformation_potential_gamma,alpha_gamma,mass_gamma) #double it to take absorption + emission into account
+    acoustic_rates_L = AcousticDeformationElasticScatteringRate(energies,acoustic_deformation_potential_L,alpha_L,mass_L_effective)
+    acoustic_rates_X = AcousticDeformationElasticScatteringRate(energies,acoustic_deformation_potential_X,alpha_X,mass_X_effective)
     if scatIndex == 1:
         scatteringRateTable = np.array([acoustic_rates_gamma])
         scatTypeLabels = {scatIndex: 'Acoustic Deformation Potential, Gamma Valley'}
@@ -393,6 +417,44 @@ if polar_optical_scattering == 1:
     popX2 = scatIndex - 1
     scatIndex += 1
 
+if plasmon_scattering == 1:
+    plasmon_abs_gamma = PlasmonAbsorptionScatteringRate(energies,alpha_gamma,mass_gamma)
+    scatteringRateTable = np.concatenate((scatteringRateTable,[plasmon_abs_gamma]),axis=0)
+    scatTypeLabels[scatIndex] = 'Plasmon Scattering, Absorption, Gamma Valley'
+    scatTypeEnergyShifts[scatIndex] = plasmon_frequency*hbar_j
+    plG1 = scatIndex - 1
+    scatIndex += 1
+    plasmon_emi_gamma = PlasmonEmissionScatteringRate(energies,alpha_gamma,mass_gamma)
+    scatteringRateTable = np.concatenate((scatteringRateTable,[plasmon_emi_gamma]),axis=0)
+    scatTypeLabels[scatIndex] = 'Plasmon Scattering, Emission, Gamma Valley'
+    scatTypeEnergyShifts[scatIndex] = -plasmon_frequency*hbar_j
+    plG2 = scatIndex - 1
+    scatIndex += 1
+    plasmon_abs_L = PlasmonAbsorptionScatteringRate(energies,alpha_L,mass_L_effective)
+    scatteringRateTable = np.concatenate((scatteringRateTable,[plasmon_abs_L]),axis=0)
+    scatTypeLabels[scatIndex] = 'Plasmon Scattering, Absorption, L Valley'
+    scatTypeEnergyShifts[scatIndex] = plasmon_frequency*hbar_j
+    plL1 = scatIndex - 1
+    scatIndex += 1
+    plasmon_emi_L = PlasmonEmissionScatteringRate(energies,alpha_L,mass_L_effective)
+    scatteringRateTable = np.concatenate((scatteringRateTable,[plasmon_emi_L]),axis=0)
+    scatTypeLabels[scatIndex] = 'Plasmon Scattering, Emission, L Valley'
+    scatTypeEnergyShifts[scatIndex] = -plasmon_frequency*hbar_j
+    plL2 = scatIndex - 1
+    scatIndex += 1
+    plasmon_abs_X = PlasmonAbsorptionScatteringRate(energies,alpha_X,mass_X_effective)
+    scatteringRateTable = np.concatenate((scatteringRateTable,[plasmon_abs_X]),axis=0)
+    scatTypeLabels[scatIndex] = 'Plasmon Scattering, Absorption, X Valley'
+    scatTypeEnergyShifts[scatIndex] = plasmon_frequency*hbar_j
+    plX1 = scatIndex - 1
+    scatIndex += 1
+    plasmon_emi_X = PlasmonEmissionScatteringRate(energies,alpha_X,mass_X_effective)
+    scatteringRateTable = np.concatenate((scatteringRateTable,[plasmon_emi_X]),axis=0)
+    scatTypeLabels[scatIndex] = 'Plasmon Scattering, Emission, X Valley'
+    scatTypeEnergyShifts[scatIndex] = -plasmon_frequency*hbar_j
+    plX2 = scatIndex - 1
+    scatIndex += 1
+
 if plot_stuff == 1:
     plt.figure(0)
     plt.title('Ionized Impurity')
@@ -461,6 +523,8 @@ for i in range(len(scatteringRateTable)):
         scatteringSums[i] = scatteringRateTable[i]+scatteringSums[i-1]
 max_scatter = np.max(scatteringSums[-1])
 
+
+# scatTypeConverterGamma = np.array([ii1,adp1,odp1,odp2,ivgL1,ivgL2,ivgX1,ivgX2,popG1,popG2,plG1,plG2])
 scatTypeConverterGamma = np.array([ii1,adp1,odp1,odp2,ivgL1,ivgL2,ivgX1,ivgX2,popG1,popG2])
 scatteringRateTableGamma = scatteringRateTable[scatTypeConverterGamma]
 scatteringRateTableGamma[scatTypeConverterGamma == ivgL1] *= 4
@@ -475,6 +539,7 @@ for i in range(len(scatteringRateTableGamma)):
         scatteringSumsGamma[i] = scatteringRateTableGamma[i]+scatteringSumsGamma[i-1]
 max_scatter_gamma = np.max(scatteringSumsGamma[-1])
 
+# scatTypeConverterL = np.array([ii2,adp2,odp3,odp4,ivLg1,ivLg2,ivLL1,ivLL2,ivLX1,ivLX2,popL1,popL2,plL1,plL2])
 scatTypeConverterL = np.array([ii2,adp2,odp3,odp4,ivLg1,ivLg2,ivLL1,ivLL2,ivLX1,ivLX2,popL1,popL2])
 scatteringRateTableL = scatteringRateTable[scatTypeConverterL]
 scatteringRateTableL[scatTypeConverterL == ivLL1] *= 3
@@ -489,6 +554,7 @@ for i in range(len(scatteringRateTableL)):
         scatteringSumsL[i] = scatteringRateTableL[i]+scatteringSumsL[i-1]
 max_scatter_L = np.max(scatteringSumsL[-1])
 
+# scatTypeConverterX = np.array([ii3,adp3,odp5,odp6,ivXg1,ivXg2,ivXL1,ivXL2,ivXX1,ivXX2,popX1,popX2,plX1,plX2])
 scatTypeConverterX = np.array([ii3,adp3,odp5,odp6,ivXg1,ivXg2,ivXL1,ivXL2,ivXX1,ivXX2,popX1,popX2])
 scatteringRateTableX = scatteringRateTable[scatTypeConverterX]
 scatteringRateTableX[scatTypeConverterX == ivXX1] *= 2
@@ -590,6 +656,16 @@ def MaxwellBoltzmannEnergyDistribution(numberOfNeededEnergies):
     output = np.asarray(outputList)
     return output
 
+
+def UnnormalizedDistributionFunctionCalculator(kx,ky,kz):
+    kr = np.sqrt(kx**2+ky**2)
+    x1 = plt.hist2d(kr,kz,bins=100,range=np.array([[krMin,krMax],[kzMin,kzMax]]))
+    distFunc = x1[0]
+    krValues = x1[1]
+    kzValues = x1[2]
+    return distFunc,krValues,kzValues
+
+
 # energy_mesh,theta_mesh = np.meshgrid(np.linspace(1e-4,1,1000)*e,np.linspace(0,np.pi,1000))
 #
 # def CarrierCarrier(energy,mass):
@@ -598,14 +674,14 @@ def MaxwellBoltzmannEnergyDistribution(numberOfNeededEnergies):
 
 ##### Generate random flight time before collision #####
 
-time_step_count = 50
-particle_count = 1000
+time_step_count = 60
+particle_count = 5000
 start_time = 0
-max_time = 5e-12
+max_time = 3e-12
 dt = (max_time-start_time)/time_step_count
 times = np.linspace(start_time,max_time,time_step_count)
 
-electric_field = np.array([0,0,10e5])
+electric_field = np.array([0,0,2e5])
 
 startingEnergies = MaxwellBoltzmannEnergyDistribution(particle_count)
 startingThetas = np.random.rand(particle_count)*np.pi
@@ -618,6 +694,11 @@ vxArray = hbar_j*kxArray/(mass*(1+2*alpha_gamma*startingEnergies))
 vyArray = hbar_j*kyArray/(mass*(1+2*alpha_gamma*startingEnergies))
 vzArray = hbar_j*kzArray/(mass*(1+2*alpha_gamma*startingEnergies))
 print(np.mean(vzArray))
+krArray = np.sqrt(kxArray**2+kyArray**2)
+krMin = 0
+krMax = 1e10
+kzMin = -5e9
+kzMax = 5e9
 
 mass_array = np.array([mass_gamma,mass_L_effective,mass_X_effective])
 alpha_array = np.array([alpha_gamma,alpha_L,alpha_X])
@@ -648,11 +729,25 @@ energyAverages[0] = np.mean(energizer(kxArray,kyArray,kzArray,alpha_array[electr
 energyAveragesGamma[0] = energyAverages[0]
 energyAveragesL[0] = 0
 energyAveragesX[0] = 0
+pauliRejectionCount = 0
 
 for stepNum in range(time_step_count-1):
     # print(scatCount-scatCount2)
     scatCount2 = scatCount.copy()
     print('Starting on time interval ', stepNum, ' out of ', time_step_count, '.')
+    g1 = UnnormalizedDistributionFunctionCalculator(kxArray,kyArray,kzArray)
+    if np.sum(g1[0]) < particle_count:
+        print('ERROR: kr or kz range is too small!')
+        quit
+    if stepNum == 0:
+        cumulativeDistributionFunction = g1[0]/particle_count
+        krValues = g1[1]
+        krValues = krValues[:-1]
+        kzValues = g1[2]
+        kzValues = kzValues[:-1]
+    else:
+        cumulativeDistributionFunction += g1[0]/particle_count
+    print(np.max(cumulativeDistributionFunction)/(stepNum+1))
     timeElapsed = np.zeros(particle_count)
     randomFlightTimes = -np.log(np.random.rand(particle_count))/max_scatter_array[electron_states]
     while np.max(randomFlightTimes) > 0:
@@ -663,7 +758,6 @@ for stepNum in range(time_step_count-1):
         kyArray = kyArray + e*electric_field[1]*randomFlightTimes/hbar_j
         kzArray = kzArray + e*electric_field[2]*randomFlightTimes/hbar_j
         currentEnergies = energizer(kxArray,kyArray,kzArray,alpha_array[electron_states],mass_array[electron_states])
-        currentEnergyIndices = np.zeros([particle_count]).astype(int)
         randomScats = np.zeros(particle_count)
         randomScats[randomFlightTimes != 0] = np.random.rand(len(randomFlightTimes[randomFlightTimes != 0]))*max_scatter
         scatYesOrNo = np.zeros(particle_count)
@@ -673,6 +767,7 @@ for stepNum in range(time_step_count-1):
         for i in range(particle_count):
             currentEnergyIndex = np.argmin(np.abs(energies-currentEnergies[i]))
             if electron_states[i] == 0:
+                new_state = 0
                 for scatNum in range(len(scatteringSumsGamma)):
                     if randomScats[i] < scatteringSumsGamma[scatNum,currentEnergyIndex] and randomScats[i] != 0.0:
                         scatteringType[i] = scatTypeConverterGamma[scatNum]+1
@@ -695,28 +790,29 @@ for stepNum in range(time_step_count-1):
                         scatterTheta[i] = polarOpticalEmissionRandomTheta()
                         scatYesOrNo[i] = 2
                     if scatTypeLabels[scatteringType[i]] == 'Intervalley Potential, Absorption, Gamma to L' or scatTypeLabels[scatteringType[i]] == 'Intervalley Potential, Emission, Gamma to L':
-                        electron_states[i] = 1
+                        new_state = 1
                     if scatTypeLabels[scatteringType[i]] == 'Intervalley Potential, Absorption, Gamma to X' or scatTypeLabels[scatteringType[i]] == 'Intervalley Potential, Emission, Gamma to X':
-                        electron_states[i] = 2
+                        new_state = 2
                     energyShift = scatTypeEnergyShifts[scatteringType[i]]
                     totalEnergyShift[i] += energyShift
                     if currentEnergies[i]+energyShift < 0:
                         if currentEnergies[i]+energyShift > -1e-23:
-                            kxArray[i] = 0
-                            kyArray[i] = 0
-                            kzArray[i] = 0
+                            newKx = 0
+                            newKy = 0
+                            newKz = 0
                         else:
                             print('Error: check on scattering type ', scatTypeLabels[scatteringType[i]])
                             quit
                     else:
-                        kxArray[i] *= np.sqrt( (mass_array[electron_states[i]]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[electron_states[i]]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
-                        kyArray[i] *= np.sqrt( (mass_array[electron_states[i]]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[electron_states[i]]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
-                        kzArray[i] *= np.sqrt( (mass_array[electron_states[i]]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[electron_states[i]]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
-                    newEnergy = energizer(kxArray[i],kyArray[i],kzArray[i],alpha_array[electron_states[i]],mass_array[electron_states[i]])
+                        newKx = kxArray[i]*np.sqrt( (mass_array[new_state]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[new_state]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
+                        newKy = kyArray[i]*np.sqrt( (mass_array[new_state]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[new_state]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
+                        newKz = kzArray[i]*np.sqrt( (mass_array[new_state]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[new_state]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
+                    newEnergy = energizer(newKx,newKy,newKz,alpha_array[new_state],mass_array[new_state])
                     if np.abs(newEnergy - (currentEnergies[i]+energyShift)) > 1e-23:
                         print('Uh oh')
                         quit
             elif electron_states[i] == 1:
+                new_state = 1
                 for scatNum in range(len(scatteringSumsL)):
                     if randomScats[i] < scatteringSumsL[scatNum,currentEnergyIndex] and randomScats[i] != 0.0:
                         scatteringType[i] = scatTypeConverterL[scatNum]+1
@@ -739,28 +835,29 @@ for stepNum in range(time_step_count-1):
                         scatterTheta[i] = polarOpticalEmissionRandomTheta()
                         scatYesOrNo[i] = 2
                     if scatTypeLabels[scatteringType[i]] == 'Intervalley Potential, Absorption, L to Gamma' or scatTypeLabels[scatteringType[i]] == 'Intervalley Potential, Emission, L to Gamma':
-                        electron_states[i] = 0
+                        new_state = 0
                     if scatTypeLabels[scatteringType[i]] == 'Intervalley Potential, Absorption, L to X' or scatTypeLabels[scatteringType[i]] == 'Intervalley Potential, Emission, L to X':
-                        electron_states[i] = 2
+                        new_state = 2
                     energyShift = scatTypeEnergyShifts[scatteringType[i]]
                     totalEnergyShift[i] += energyShift
                     if currentEnergies[i]+energyShift < 0:
                         if currentEnergies[i]+energyShift > -1e-23:
-                            kxArray[i] = 0
-                            kyArray[i] = 0
-                            kzArray[i] = 0
+                            newKx = 0
+                            newKy = 0
+                            newKz = 0
                         else:
                             print('Error: check on scattering type ', scatTypeLabels[scatteringType[i]])
                             quit
                     else:
-                        kxArray[i] *= np.sqrt( (mass_array[electron_states[i]]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[electron_states[i]]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
-                        kyArray[i] *= np.sqrt( (mass_array[electron_states[i]]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[electron_states[i]]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
-                        kzArray[i] *= np.sqrt( (mass_array[electron_states[i]]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[electron_states[i]]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
-                    newEnergy = energizer(kxArray[i],kyArray[i],kzArray[i],alpha_array[electron_states[i]],mass_array[electron_states[i]])
+                        newKx = kxArray[i]*np.sqrt( (mass_array[new_state]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[new_state]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
+                        newKy = kyArray[i]*np.sqrt( (mass_array[new_state]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[new_state]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
+                        newKz = kzArray[i]*np.sqrt( (mass_array[new_state]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[new_state]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
+                    newEnergy = energizer(newKx,newKy,newKz,alpha_array[new_state],mass_array[new_state])
                     if np.abs(newEnergy - (currentEnergies[i]+energyShift)) > 1e-23:
                         print('Uh oh')
                         quit
             elif electron_states[i] == 2:
+                new_state = 2
                 for scatNum in range(len(scatteringSumsX)):
                     if randomScats[i] < scatteringSumsX[scatNum,currentEnergyIndex] and randomScats[i] != 0.0:
                         scatteringType[i] = scatTypeConverterX[scatNum]+1
@@ -783,30 +880,48 @@ for stepNum in range(time_step_count-1):
                         scatterTheta[i] = polarOpticalEmissionRandomTheta()
                         scatYesOrNo[i] = 2
                     if scatTypeLabels[scatteringType[i]] == 'Intervalley Potential, Absorption, X to Gamma' or scatTypeLabels[scatteringType[i]] == 'Intervalley Potential, Emission, X to Gamma':
-                        electron_states[i] = 0
+                        new_state = 0
                     if scatTypeLabels[scatteringType[i]] == 'Intervalley Potential, Absorption, X to L' or scatTypeLabels[scatteringType[i]] == 'Intervalley Potential, Emission, X to L':
-                        electron_states[i] = 1
+                        new_state = 1
                     energyShift = scatTypeEnergyShifts[scatteringType[i]]
                     totalEnergyShift[i] += energyShift
                     if currentEnergies[i]+energyShift < 0:
                         if currentEnergies[i]+energyShift > -1e-23:
-                            kxArray[i] = 0
-                            kyArray[i] = 0
-                            kzArray[i] = 0
+                            newKx = 0
+                            newKy = 0
+                            newKz = 0
                         else:
                             print('Error: check on scattering type ', scatTypeLabels[scatteringType[i]])
                             quit
                     else:
-                        kxArray[i] *= np.sqrt( (mass_array[electron_states[i]]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[electron_states[i]]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
-                        kyArray[i] *= np.sqrt( (mass_array[electron_states[i]]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[electron_states[i]]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
-                        kzArray[i] *= np.sqrt( (mass_array[electron_states[i]]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[electron_states[i]]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
-                    newEnergy = energizer(kxArray[i],kyArray[i],kzArray[i],alpha_array[electron_states[i]],mass_array[electron_states[i]])
+                        newKx = kxArray[i]*np.sqrt( (mass_array[new_state]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[new_state]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
+                        newKy = kyArray[i]*np.sqrt( (mass_array[new_state]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[new_state]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
+                        newKz = kzArray[i]*np.sqrt( (mass_array[new_state]/old_mass) * ((currentEnergies[i]+energyShift)/currentEnergies[i]) * ((1 + alpha_array[new_state]*(currentEnergies[i] + energyShift)/e) / (1 + old_alpha*currentEnergies[i]/e)) )
+                    newEnergy = energizer(newKx,newKy,newKz,alpha_array[new_state],mass_array[new_state])
                     if np.abs(newEnergy - (currentEnergies[i]+energyShift)) > 1e-23:
                         print('Uh oh')
                         quit
-        scatterTheta[scatYesOrNo == 1] = np.arccos(2*np.random.rand(len(scatYesOrNo[scatYesOrNo == 1]))-1)
-        scatterPhi[scatYesOrNo > 0] = np.random.rand(len(scatYesOrNo[scatYesOrNo > 0]))*2*np.pi
-        kxArray,kyArray,kzArray = rotateVector(kxArray,kyArray,kzArray,scatterTheta,scatterPhi)
+            if scatYesOrNo[i] == 1:
+                scatterTheta[i] = np.arccos(2*np.random.rand()-1)
+            if scatYesOrNo[i] > 0:
+                scatterPhi[i] = np.random.rand()*2*np.pi
+            if scatteringType[i] != 0:
+                newKx,newKy,newKz = rotateVector(newKx,newKy,newKz,scatterTheta[i],scatterPhi[i])
+                if np.isnan(newKx) == True or np.isnan(newKy) == True or np.isnan(newKz) == True:
+                    print('ERROR: EXITING PROGRAM')
+                    QUIT
+                newKr = np.sqrt(newKx**2+newKy**2)
+                pauliRandom = np.random.rand()
+                krIndex = np.argmin(np.abs(krValues-newKr))
+                kzIndex = np.argmin(np.abs(kzValues-newKz))
+                if pauliRandom > cumulativeDistributionFunction[krIndex,kzIndex]/(stepNum+1):
+                    kxArray[i] = newKx
+                    kyArray[i] = newKy
+                    kzArray[i] = newKz
+                    electron_states[i] = new_state
+                else:
+                    # print('PAULI EXCLUSION TRIGGERED: SCATTERING EVENT REJECTED')
+                    pauliRejectionCount += 1
         randomFlightTimes[randomFlightTimes != 0] = -np.log(np.random.rand(len(randomFlightTimes[randomFlightTimes != 0])))/max_scatter
 
     kxArray = kxArray + e*electric_field[0]*(-timeElapsed+dt)/hbar_j
@@ -846,21 +961,24 @@ for stepNum in range(time_step_count-1):
     print(scatCount)
     print(' ')
 
+plt.clf()
 # velocityFileName = 'velocityAverages' + str((electric_field[2]/1e5).astype(int)) + 'kVpercmEzFieldEquilibrium'
 # np.save(velocityFileName,velocityAverages,allow_pickle=True)
 # energyFileName = 'energyAverages' + str((electric_field[2]/1e5).astype(int)) + 'kVpercmEzFieldEquilibrium'
 # np.save(energyFileName,energyAverages,allow_pickle=True)
 plt.figure(1)
 # plt.plot(times*1e12,velocityAveragesGamma/1e5,'o',label='Gamma')
+plt.plot(times*1e12,velocityAverages/1e5,'o')
 # plt.plot(times*1e12,velocityAveragesL/1e5,'o',label='L')
 # plt.plot(times*1e12,velocityAveragesX/1e5,'o',label='X')
-plt.plot(times*1e12,velocityAverages/1e5,'o',label='Overall')
-plt.legend()
+# plt.plot(electric_field_array/1e5,timeAveragedVelocities/1e5,'o',label='Overall')
 plt.figure(2)
-plt.plot(times*1e12,energyAveragesGamma/1.602e-19,'o',label='Gamma')
-plt.plot(times*1e12,energyAveragesL/1.602e-19,'o',label='L')
-plt.plot(times*1e12,energyAveragesX/1.602e-19,'o',label='X')
-plt.plot(times*1e12,energyAverages/1.602e-19,'o',label='Overall')
+plt.plot(times*1e12,energyAveragesGamma/e,'o',label='Gamma')
+plt.plot(times*1e12,energyAveragesL/e,'o',label='L')
+plt.plot(times*1e12,energyAveragesX/e,'o',label='X')
+# plt.plot(times*1e12,energyAveragesL/1.602e-19,'o',label='L')
+# plt.plot(times*1e12,energyAveragesX/1.602e-19,'o',label='X')
+# plt.plot(times*1e12,energyAverages/1.602e-19,'o',label='Overall')
 # plt.plot(times*1e12,0.5*mass*velocityAverages**2/1.602e-19,'o',label='Calculated from drift velocity only')
 plt.legend()
 plt.show()
